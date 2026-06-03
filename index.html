@@ -114,7 +114,14 @@ async function startSetup() {
 
         log("Subscription取得成功");
 
-        console.log(subscription);
+        console.log(
+            "Subscription:",
+            JSON.stringify(
+                subscription,
+                null,
+                2
+            )
+        );
 
         log("GASへ送信");
 
@@ -122,9 +129,10 @@ async function startSetup() {
             GAS_WEBAPP_URL,
             {
                 method: "POST",
+                mode: "no-cors",
                 headers: {
                     "Content-Type":
-                    "application/json"
+                        "text/plain"
                 },
                 body:
                     JSON.stringify(
@@ -133,15 +141,16 @@ async function startSetup() {
             }
         );
 
+        log("送信完了");
         log("登録完了");
 
     } catch (error) {
 
         log("エラー");
-
         log(error.message);
 
         console.error(error);
+
     }
 }
 </script>
