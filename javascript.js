@@ -1,30 +1,38 @@
-self.addEventListener("install", event => {
-  console.log("SW install");
-  self.skipWaiting();
-});
+const APP_URL =
+"https://oreohasaikounoore.github.io/javascripttest/";
 
-self.addEventListener("activate", event => {
-  console.log("SW activate");
-});
+self.addEventListener("notificationclick", event => {
 
-// プッシュ通知を受信したときのイベント
-self.addEventListener("push", event => {
-  let message = "Hello World";
+event.notification.close();
 
-  // 通知データがある場合は、そのテキストを取得
-  if (event.data) {
-    message = event.data.text();
+event.waitUntil(
+clients.matchAll({
+type: "window",
+includeUncontrolled: true
+}).then(clientList => {
+
+```
+  for (const client of clientList) {
+
+    if (
+      client.url.startsWith(APP_URL)
+    ) {
+
+      if ("focus" in client) {
+        return client.focus();
+      }
+
+    }
+
   }
 
-  // 通知を表示するまでサービスワーカーを待機させる
-  event.waitUntil(
-    self.registration.showNotification(
-      "GAS x GitHub Pages Web Push",
-      {
-        body: message,
-        icon: "https://www.gstatic.com/images/branding/product/2x/googleg_64dp.png",
-        badge: "https://www.gstatic.com/images/branding/product/2x/googleg_64dp.png"
-      }
-    )
-  );
+  if (clients.openWindow) {
+    return clients.openWindow(APP_URL);
+  }
+
+})
+```
+
+);
+
 });
