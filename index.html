@@ -1,81 +1,76 @@
 <!DOCTYPE html>
-<html>
+
+<html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <title>Web Push 実験場</title>
-  <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #status { padding: 15px; background: #f0f0f0; border-radius: 5px; font-weight: bold; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Service Worker テスト</title>
+
+<style>
+body {
+    font-family: sans-serif;
+    margin: 20px;
+}
+
+#status {
+    padding: 12px;
+    background: #eee;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    white-space: pre-wrap;
+}
+</style>
+
 </head>
 <body>
-  <h2>GitHub Pages × GAS Web Push 実験</h2>
-  <div id="status">初期化中...</div>
-  <button id="btn-auth" style="display:none;" onclick="startSetup()">通知を有効にする</button>
 
-  <script>
-    // ※各自のGAS Webアプリ(デプロイ後)のURLに差し替えてください
-    const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwbQRoTFPr0pQzzBmtWPrzD70DPezEb4OCxJpFEG-h6L5iTdSua7wOs2CNSZSs9IcV4/exec';
-    // ※VAPID公開鍵（P-256非圧縮鍵のBase64URL。GAS側とペアにする必要があります）
-    const VAPID_PUBLIC_KEY = 'YOUR_VAPID_PUBLIC_KEY_BASE64URL';
+<h2>Service Worker テスト</h2>
 
-    window.addEventListener('load', () => {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        document.getElementById('status').innerText = 'このブラウザはWeb Push非対応です。';
-        return;
-      }
-      document.getElementById('status').innerText = '準備完了。ボタンを押して開始してください。';
-      document.getElementById('btn-auth').style.display = 'block';
-    });
+<div id="status">初期化中...</div>
 
-    async function startSetup() {
-      const statusDiv = document.getElementById('status');
-      try {
-        // 1. 通知許可
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          statusDiv.innerText = '通知許可が拒否されました。';
-          return;
-        }
+<button id="registerBtn">
+    Service Worker 登録
+</button>
 
-        // 2. 同一ドメイン上の Service Worker を登録（javascript.js）
-        statusDiv.innerText = 'Service Worker 登録中...';
-        const registration = await navigator.serviceWorker.register('./javascript.js');
-        
-        // 3. Push Subscriptionの取得
-        statusDiv.innerText = 'Push Subscription 取得中...';
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-        });
+<script>
+const status = document.getElementById("status");
 
-        // 4. GASのAPIへ保存（CORSを回避するため no-cors、またはGAS側で対応が必要）
-        statusDiv.innerText = 'GASへSubscriptionを送信中...';
-        await fetch(GAS_API_URL, {
-          method: 'POST',
-          mode: 'no-cors', 
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(subscription)
-        });
+function log(msg) {
+    console.log(msg);
+    status.textContent += "\n" + msg;
+}
 
-        statusDiv.innerText = '設定完了！GASエディタから sendHelloWorld() を実行してください。';
+status.textContent = "ページ読込完了";
 
-      } catch (error) {
-        statusDiv.innerText = 'エラー: ' + error.message;
-        console.error(error);
-      }
+if (!("serviceWorker" in navigator)) {
+    status.textContent =
+        "このブラウザはService Worker非対応です";
+}
+
+document.getElementById("registerBtn")
+.addEventListener("click", async () => {
+
+    try {
+        log("登録開始");
+
+        const registration =
+            await navigator.serviceWorker.register("./javascript.js");
+
+        log("登録成功");
+        log("scope: " + registration.scope);
+
+        await navigator.serviceWorker.ready;
+
+        log("SW READY");
+
+    } catch (e) {
+        log("エラー");
+        log(e.message);
+        console.error(e);
     }
 
-    function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-    }
-  </script>
+});
+</script>
+
 </body>
 </html>
