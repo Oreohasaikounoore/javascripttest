@@ -1,38 +1,34 @@
-const APP_URL =
-"https://oreohasaikounoore.github.io/javascripttest/";
-
 self.addEventListener("notificationclick", event => {
 
-event.notification.close();
+  event.notification.close();
 
-event.waitUntil(
-clients.matchAll({
-type: "window",
-includeUncontrolled: true
-}).then(clientList => {
+  const targetUrl =
+    "https://oreohasaikounoore.github.io/javascripttest/";
 
-```
-  for (const client of clientList) {
+  event.waitUntil(
+    clients.matchAll({
+      type: "window",
+      includeUncontrolled: true
+    }).then(clientList => {
 
-    if (
-      client.url.startsWith(APP_URL)
-    ) {
+      for (const client of clientList) {
 
-      if ("focus" in client) {
-        return client.focus();
+        // 既に対象サイトが開いている場合はそのタブを再利用
+        if (client.url.startsWith(targetUrl)) {
+
+          if ("focus" in client) {
+            return client.focus();
+          }
+
+          return client;
+        }
       }
 
-    }
-
-  }
-
-  if (clients.openWindow) {
-    return clients.openWindow(APP_URL);
-  }
-
-})
-```
-
-);
+      // 開いていなければ新規タブで開く
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
 
 });
