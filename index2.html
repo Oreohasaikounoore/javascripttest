@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GAS WebRTC 画面共有</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #1e1e24;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: #2a2a35;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    h1 {
+      text-align: center;
+      margin-top: 0;
+      color: #4da6ff;
+    }
+    .setup-area {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #111;
+      color: #fff;
+      box-sizing: border-box;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-share { background-color: #4caf50; color: white; }
+    .btn-share:hover { background-color: #45a049; }
+    .btn-view { background-color: #2196f3; color: white; }
+    .btn-view:hover { background-color: #0b7dda; }
+    .status {
+      padding: 10px;
+      background: #333;
+      border-left: 4px solid #4da6ff;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+      border-radius: 0 6px 6px 0;
+    }
+    video {
+      width: 100%;
+      background: #000;
+      border-radius: 8px;
+      aspect-ratio: 16 / 9;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>WebRTC 画面共有 (GASシグナリング)</h1>
+  
+  <div class="setup-area">
+    <label for="gasUrl">GAS WebアプリのURL:</label>
+    <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/AKfycbwDOe_6C8gmgK3uyIKc40su-oUl4498SPxUtiXpGLuAFcrmqkct-JE39DyQhaaBK-kQ7Q/exec">
+    
+    <div class="btn-group">
+      <button class="btn-share" onclick="startBroadcast()">配信者として画面共有を開始</button>
+      <button class="btn-view" onclick="startView()">視聴者として見を見る</button>
+    </div>
+  </div>
+
+  <div class="status" id="statusText">状態: 待機中。GASのURLを入力してボタンを押してください。</div>
+
+  <video id="mainVideo" autoplay playsinline controls muted></video>
+</div>
+
+<script>
+  let pc;
+  let pollInterval;
+  const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+  function updateStatus(text) {
+    document.getElementById('statusText').innerText = `状態: ${text}`;
+  }
+
+  // GASへの通信関数（CORSのプリフライトエラーを避けるため text/plain で送信）
+  async function sendToGas(payload) {
+    const url = document.getElementById('gasUrl').value.trim();
+    if (!url) {
+      alert('GASのWebアプリURLを入力してください。');
+      throw new Error('Missing GAS URL');
+    }
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' }, 
+        body: JSON.stringify(payload)
+      });
+      return await response.json();
+    } catch (e) {
+      console.error('GAS通信エラー:', e);
+      updateStatus('GASとの通信に失敗しました。');
+    }
+  }
+
+  // 定期的にGASからメッセージを取得するポーリング関数
+  function startPolling(role, callback) {
+    pollInterval = setInterval(async () => {
+      const res = await sendToGas({ action: 'fetch', from: role });
+      if (res && res.messages && res.messages.length > 0) {
+        for (const msg of res.messages) {
+          callback(msg);
+        }
+      }
+    }, 2000); // 2秒間隔でチェック
+  }
+
+  function stopPolling() {
+    clearInterval(pollInterval);
+  }
+
+  // --- 配信者（画面共有側）の処理 ---
+  async function startBroadcast() {
+    updateStatus('画面キャプチャの準備中...');
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      document.getElementById('mainVideo').srcObject = stream;
+      
+      pc = new RTCPeerConnection(config);
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      updateStatus('通信経路（ICE）を探索中...（数秒かかります）');
+
+      // Vanilla ICE: すべてのICEが集まるのを待ってからGASに送る
+      pc.onicecandidate = async (event) => {
+        if (event.candidate === null) { 
+          updateStatus('GASへ接続情報を送信中...');
+          await sendToGas({ action: 'clear' }); // 古いセッションをクリア
+          await sendToGas({ action: 'send', to: 'viewer', data: pc.localDescription });
+          updateStatus('Offer送信完了。視聴者の参加を待っています...');
+          
+          // 視聴者からのAnswerを待つ
+          startPolling('broadcaster', async (msg) => {
+            if (msg.type === 'answer') {
+              await pc.setRemoteDescription(new RTCSessionDescription(msg));
+              updateStatus('視聴者が接続しました！画面共有中...');
+              stopPolling();
+            }
+          });
+        }
+      };
+    } catch (err) {
+      console.error(err);
+      updateStatus(`エラー: ${err.message}`);
+    }
+  }
+
+  // --- 視聴者（見る側）の処理 ---
+  async function startView() {
+    pc = new RTCPeerConnection(config);
+    
+    // 映像トラックを受信したらビデオタグにセット
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        document.getElementById('mainVideo').srcObject = event.streams[0];
+        updateStatus('接続成功！リアルタイム映像を受信中...');
+      }
+    };
+
+    updateStatus('配信者からの接続情報を待っています（ポーリング中）...');
+
+    // 配信者からのOfferを待つ
+    startPolling('viewer', async (msg) => {
+      if (msg.type === 'offer') {
+        stopPolling(); // 一旦ポーリングを停止
+        updateStatus('Offer受信。接続経路を設定中...');
+
+        await pc.setRemoteDescription(new RTCSessionDescription(msg));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // すべてのICEが集まったらAnswerをGASに送る
+        pc.onicecandidate = async (event) => {
+          if (event.candidate === null) {
+            await sendToGas({ action: 'send', to: 'broadcaster', data: pc.localDescription });
+            updateStatus('Answer送信完了。映像の受信を開始します...');
+          }
+        };
+      }
+    });
+  }
+</script>
+</body>
+</html>
