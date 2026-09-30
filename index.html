@@ -95,6 +95,12 @@
 
 <h3>Web Push 接続・デバッグテスト</h3>
 
+<p>
+  <label>共有シークレット(GASの SHARED_SECRET):
+    <input id="secretInput" type="password" size="32" autocomplete="off">
+  </label>
+</p>
+
 <button id="btn">
   Web Push 通知を登録する
 </button>
@@ -115,7 +121,7 @@
 // ================================================================
 
 const GAS_WEBAPP_URL =
-  "https://script.google.com/macros/s/AKfycbxGgCNIJqM5UMses09J8Omp8dOj79O7sP-v1ha3MzQY2qryyYCvWx5wbCXemJ3lXZpv/exec";
+  "https://script.google.com/macros/s/AKfycbzCHOmHrYs4PF4zxQOL34uZXSbKDcEZWt2znn5mijis58f1qw5Wl3VXn_4iuKCw9HMo/exec";
 
 const VAPID_PUBLIC_KEY =
   "BIvRwwwZHrACyJEJVK1VmZhqWg9o7k5XPVt3_WjPGAuBaRX9IvbKtwNdXVWcHLASJQf1ZKMqxY7gtwvRQ1tm_2Y";
@@ -363,6 +369,14 @@ document.getElementById(
 
   logEl.textContent = "";
 
+  const secret =
+    document.getElementById("secretInput").value.trim();
+
+  if (!secret) {
+    log("共有シークレットを入力してください。", "error");
+    return;
+  }
+
   log(
     "通知登録処理を開始します...",
     "info"
@@ -593,9 +607,11 @@ document.getElementById(
       {
         method: "POST",
         mode: "no-cors",
-        body: JSON.stringify(
-          sub.toJSON()
-        )
+        body: JSON.stringify({
+          action: "subscribe",
+          secret: secret,
+          subscription: sub.toJSON()
+        })
       }
     );
 
