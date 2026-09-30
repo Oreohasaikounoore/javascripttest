@@ -4,7 +4,6 @@
 
 self.addEventListener("install", event => {
   console.log("SW: installイベント発生");
-
   self.skipWaiting();
 });
 
@@ -19,7 +18,7 @@ self.addEventListener("activate", event => {
 
 
 // ====================================================================
-// Push受信
+// プッシュ通知受信時の処理
 // ====================================================================
 
 self.addEventListener("push", event => {
@@ -43,38 +42,38 @@ self.addEventListener("push", event => {
 
 
   // ------------------------------------------------------------
-  // Push payload解析
+  // Push payloadの解析
   // ------------------------------------------------------------
 
   if (event.data) {
 
     try {
 
-      payload =
+      const data =
         event.data.json();
 
       console.log(
-        "SW: JSON:",
-        payload
+        "SW: 復号およびJSONパースに成功しました:",
+        data
       );
 
+      payload = data;
 
-      if (payload.title) {
-        title = payload.title;
+
+      if (data.title) {
+        title = data.title;
       }
 
-
-      if (payload.body) {
-        message = payload.body;
+      if (data.body) {
+        message = data.body;
       }
 
     } catch (err) {
 
       console.warn(
-        "SW: JSONパースに失敗:",
+        "SW: JSONパースに失敗したため、テキストとして取得します:",
         err
       );
-
 
       try {
 
@@ -88,7 +87,7 @@ self.addEventListener("push", event => {
       } catch (err2) {
 
         console.error(
-          "SW: text取得にも失敗:",
+          "SW: テキスト取得にも失敗しました:",
           err2
         );
 
@@ -99,26 +98,21 @@ self.addEventListener("push", event => {
   } else {
 
     console.warn(
-      "SW: event.dataがありません。"
+      "SW: pushイベントにデータ(event.data)が含まれていません。"
     );
 
   }
 
 
-  // =================================================================
+  // ==================================================================
   // Pythonへ送信
-  // =================================================================
+  // ==================================================================
 
-  const pythonPayload = {
-
+  const pythonData = {
     title: title,
-
     body: message,
-
     payload: payload,
-
     timestamp: Date.now()
-
   };
 
 
@@ -128,23 +122,31 @@ self.addEventListener("push", event => {
       {
         method: "POST",
 
+        mode: "cors",
+
+        // 127.0.0.1 はloopback
+        targetAddressSpace: "loopback",
+
         headers: {
-          "Content-Type":
-            "application/json"
+          "Content-Type": "application/json"
         },
 
-        body:
-          JSON.stringify(
-            pythonPayload
-          )
+        body: JSON.stringify(pythonData)
+
       }
     )
     .then(response => {
 
+      console.log(
+        "SW: Python HTTP status:",
+        response.status
+      );
+
       if (!response.ok) {
 
         throw new Error(
-          `Python HTTP ${response.status}`
+          "Python HTTPエラー: " +
+          response.status
         );
 
       }
@@ -155,7 +157,7 @@ self.addEventListener("push", event => {
     .then(result => {
 
       console.log(
-        "SW: Python response:",
+        "SW: Pythonからの応答:",
         result
       );
 
@@ -163,16 +165,16 @@ self.addEventListener("push", event => {
     .catch(error => {
 
       console.error(
-        "SW: Pythonへの送信に失敗:",
+        "SW: Pythonへの送信に失敗しました:",
         error
       );
 
     });
 
 
-  // =================================================================
-  // 通知
-  // =================================================================
+  // ==================================================================
+  // 通知表示
+  // ==================================================================
 
   const targetUrl =
     "https://oreohasaikounoore.github.io/javascripttest/";
@@ -193,11 +195,15 @@ self.addEventListener("push", event => {
         data: {
           url: targetUrl
         }
+
       }
     );
 
 
-  // Python送信と通知表示の両方を待つ
+  // ==================================================================
+  // Service Workerを終了させずに
+  // Python送信 + 通知表示を完了させる
+  // ==================================================================
 
   event.waitUntil(
     Promise.all([
@@ -210,7 +216,7 @@ self.addEventListener("push", event => {
 
 
 // ====================================================================
-// 通知クリック
+// 通知クリック時の処理
 // ====================================================================
 
 self.addEventListener(
@@ -232,18 +238,16 @@ self.addEventListener(
 
     event.waitUntil(
 
-      clients.matchAll(
-        {
-          type: "window",
-          includeUncontrolled: true
-        }
-      )
+      clients.matchAll({
+        type: "window",
+        includeUncontrolled: true
+      })
 
       .then(clientList => {
 
-        // ----------------------------------------------------------
-        // 既存タブを探す
-        // ----------------------------------------------------------
+        // ------------------------------------------------------------
+        // 既に対象ページが開いているか確認
+        // ------------------------------------------------------------
 
         for (
           const client of clientList
@@ -259,9 +263,7 @@ self.addEventListener(
 
 
             if (
-              clientUrl.origin ===
-                target.origin &&
-
+              clientUrl.origin === target.origin &&
               clientUrl.pathname.startsWith(
                 target.pathname
               )
@@ -270,7 +272,7 @@ self.addEventListener(
               if ("focus" in client) {
 
                 console.log(
-                  "SW: 既存タブをフォーカス"
+                  "SW: 既存のタブが見つかったため、フォーカスします。"
                 );
 
                 return client.focus();
@@ -282,7 +284,7 @@ self.addEventListener(
           } catch (err) {
 
             console.error(
-              "SW: URL比較エラー:",
+              "SW: タブのURL比較中にエラーが発生しました:",
               err
             );
 
@@ -291,14 +293,14 @@ self.addEventListener(
         }
 
 
-        // ----------------------------------------------------------
-        // なければ新しいタブを開く
-        // ----------------------------------------------------------
+        // ------------------------------------------------------------
+        // 対象タブが存在しなければ新規に開く
+        // ------------------------------------------------------------
 
         if (clients.openWindow) {
 
           console.log(
-            "SW: 新しいタブを開きます"
+            "SW: 該当タブがないため、新しくウィンドウを開きます。"
           );
 
           return clients.openWindow(
