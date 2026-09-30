@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Web Push デバッグシステム</title>
+
 <style>
   body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -11,13 +13,17 @@
     background-color: #f4f7f6;
     color: #333;
   }
+
   h3 {
     color: #2c3e50;
     border-bottom: 2px solid #bdc3c7;
     padding-bottom: 8px;
   }
-  #btn {
+
+  button {
     padding: 12px 24px;
+    margin-right: 10px;
+    margin-bottom: 10px;
     font-size: 16px;
     font-weight: bold;
     background-color: #3498db;
@@ -28,13 +34,23 @@
     transition: background 0.2s;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   }
-  #btn:hover {
+
+  button:hover {
     background-color: #2980b9;
   }
-  #btn:active {
+
+  button:active {
     background-color: #21618c;
   }
-  /* コンソール風ログコンテナ */
+
+  #pythonBtn {
+    background-color: #27ae60;
+  }
+
+  #pythonBtn:hover {
+    background-color: #219150;
+  }
+
   #log-container {
     margin-top: 20px;
     background-color: #2d3436;
@@ -45,6 +61,7 @@
     max-height: 500px;
     overflow-y: auto;
   }
+
   #log {
     margin: 0;
     font-family: 'Courier New', Courier, monospace;
@@ -53,122 +70,606 @@
     white-space: pre-wrap;
     word-break: break-all;
   }
-  /* ログタイプ別の色分け */
-  .log-info { color: #00cec9; }
-  .log-success { color: #2ecc71; font-weight: bold; }
-  .log-error { color: #ff7675; font-weight: bold; }
-  .log-text { color: #ffffff; }
+
+  .log-info {
+    color: #00cec9;
+  }
+
+  .log-success {
+    color: #2ecc71;
+    font-weight: bold;
+  }
+
+  .log-error {
+    color: #ff7675;
+    font-weight: bold;
+  }
+
+  .log-text {
+    color: #ffffff;
+  }
 </style>
 </head>
+
 <body>
 
 <h3>Web Push 接続・デバッグテスト</h3>
-<button id="btn">Web Push 通知を登録する</button>
+
+<button id="btn">
+  Web Push 通知を登録する
+</button>
+
+<button id="pythonBtn">
+  Python接続テスト
+</button>
 
 <div id="log-container">
   <pre id="log"></pre>
 </div>
 
+
 <script>
-// 設定値
-const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxGgCNIJqM5UMses09J8Omp8dOj79O7sP-v1ha3MzQY2qryyYCvWx5wbCXemJ3lXZpv/exec";
-const VAPID_PUBLIC_KEY = "BIvRwwwZHrACyJEJVK1VmZhqWg9o7k5XPVt3_WjPGAuBaRX9IvbKtwNdXVWcHLASJQf1ZKMqxY7gtwvRQ1tm_2Y";
 
-const logEl = document.getElementById("log");
+// ================================================================
+// 設定
+// ================================================================
 
-// 💡 思考: タイムスタンプと色分けを施してログを出力するリッチな関数
-function log(msg, type = 'text') {
+const GAS_WEBAPP_URL =
+  "https://script.google.com/macros/s/AKfycbxGgCNIJqM5UMses09J8Omp8dOj79O7sP-v1ha3MzQY2qryyYCvWx5wbCXemJ3lXZpv/exec";
+
+const VAPID_PUBLIC_KEY =
+  "BIvRwwwZHrACyJEJVK1VmZhqWg9o7k5XPVt3_WjPGAuBaRX9IvbKtwNdXVWcHLASJQf1ZKMqxY7gtwvRQ1tm_2Y";
+
+const PYTHON_URL =
+  "http://127.0.0.1:8080/push";
+
+const TARGET_URL =
+  "https://oreohasaikounoore.github.io/javascripttest/";
+
+const logEl =
+  document.getElementById("log");
+
+
+// ================================================================
+// ログ
+// ================================================================
+
+function log(msg, type = "text") {
+
   const now = new Date();
-  const timeStr = `[${now.toTimeString().split(' ')[0]}] `;
-  
-  // スパン要素を作って色分けクラスを付与
-  const span = document.createElement("span");
-  span.className = `log-${type}`;
-  span.textContent = timeStr + msg + "\n";
-  
+
+  const timeStr =
+    `[${now.toTimeString().split(" ")[0]}] `;
+
+  const span =
+    document.createElement("span");
+
+  span.className =
+    `log-${type}`;
+
+  span.textContent =
+    timeStr + msg + "\n";
+
   logEl.appendChild(span);
-  
-  // 自動最下部スクロール
-  const container = document.getElementById("log-container");
-  container.scrollTop = container.scrollHeight;
+
+  const container =
+    document.getElementById("log-container");
+
+  container.scrollTop =
+    container.scrollHeight;
 }
 
-// Base64Url から Uint8Array への変換関数
+
+// ================================================================
+// Base64URL -> Uint8Array
+// ================================================================
+
 function base64ToUint8Array(base64) {
+
   try {
-    const padding = "=".repeat((4 - base64.length % 4) % 4);
-    const base64safe = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const raw = atob(base64safe);
-    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+
+    const padding =
+      "=".repeat(
+        (4 - base64.length % 4) % 4
+      );
+
+    const base64safe =
+      (base64 + padding)
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+
+    const raw =
+      atob(base64safe);
+
+    return Uint8Array.from(
+      [...raw].map(c =>
+        c.charCodeAt(0)
+      )
+    );
+
   } catch (err) {
-    throw new Error("VAPID公開鍵のBase64デコードに失敗しました。鍵が正しいか確認してください。: " + err.message);
+
+    throw new Error(
+      "VAPID公開鍵のBase64デコードに失敗しました: " +
+      err.message
+    );
+
   }
 }
 
-document.getElementById("btn").onclick = async () => {
-  // ログを一度クリアして開始
-  logEl.textContent = "";
-  log("通知登録処理を開始します...", "info");
+
+// ================================================================
+// Local Network Access権限確認
+// ================================================================
+
+async function checkLoopbackPermission() {
+
+  if (
+    !navigator.permissions ||
+    !navigator.permissions.query
+  ) {
+
+    log(
+      "Permissions APIが利用できません。",
+      "info"
+    );
+
+    return;
+
+  }
 
   try {
-    // 1. 通知権限の確認
-    log("ブラウザに通知権限をリクエスト中...", "text");
-    const perm = await Notification.requestPermission();
-    log(`通知権限の結果: ${perm}`, perm === "granted" ? "success" : "error");
-    
+
+    const result =
+      await navigator.permissions.query({
+        name: "loopback-network"
+      });
+
+    log(
+      `loopback-network権限: ${result.state}`,
+      result.state === "granted"
+        ? "success"
+        : "info"
+    );
+
+    result.onchange = () => {
+
+      log(
+        `loopback-network権限変更: ${result.state}`,
+        result.state === "granted"
+          ? "success"
+          : "info"
+      );
+
+    };
+
+  } catch (err) {
+
+    log(
+      "loopback-network権限状態を取得できませんでした: " +
+      err.message,
+      "info"
+    );
+
+  }
+}
+
+
+// ================================================================
+// Pythonへの接続
+//
+// 重要:
+// これはユーザーのクリック中に実行する。
+// ChromeのLocal Network Access権限を取得するため。
+// ================================================================
+
+async function testPythonConnection() {
+
+  log(
+    "Python localhost 接続テストを開始...",
+    "info"
+  );
+
+  try {
+
+    const response =
+      await fetch(
+        PYTHON_URL,
+        {
+          method: "POST",
+
+          mode: "cors",
+
+          targetAddressSpace: "loopback",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            title: "Chrome接続テスト",
+            body: "Hello from Chrome",
+            source: "index.html",
+            timestamp: Date.now()
+          })
+        }
+      );
+
+    if (!response.ok) {
+
+      throw new Error(
+        `HTTP ${response.status}`
+      );
+
+    }
+
+    const text =
+      await response.text();
+
+    log(
+      "Pythonへの接続に成功しました。",
+      "success"
+    );
+
+    log(
+      "Python response: " + text,
+      "info"
+    );
+
+    return true;
+
+  } catch (err) {
+
+    log(
+      "Pythonへの接続に失敗しました: " +
+      err.message,
+      "error"
+    );
+
+    console.error(
+      "Python connection error:",
+      err
+    );
+
+    return false;
+  }
+}
+
+
+// ================================================================
+// Python接続テストボタン
+// ================================================================
+
+document.getElementById(
+  "pythonBtn"
+).onclick = async () => {
+
+  await checkLoopbackPermission();
+
+  await testPythonConnection();
+
+  await checkLoopbackPermission();
+};
+
+
+// ================================================================
+// Web Push登録
+// ================================================================
+
+document.getElementById(
+  "btn"
+).onclick = async () => {
+
+  logEl.textContent = "";
+
+  log(
+    "通知登録処理を開始します...",
+    "info"
+  );
+
+
+  try {
+
+    // ==========================================================
+    // 1. 通知権限
+    // ==========================================================
+
+    log(
+      "ブラウザに通知権限をリクエスト中...",
+      "text"
+    );
+
+    const perm =
+      await Notification.requestPermission();
+
+    log(
+      `通知権限の結果: ${perm}`,
+      perm === "granted"
+        ? "success"
+        : "error"
+    );
+
     if (perm !== "granted") {
-      log("通知が拒否されたため、処理を中断しました。ブラウザの設定で通知を許可してください。", "error");
+
+      log(
+        "通知が拒否されたため中断します。",
+        "error"
+      );
+
       return;
     }
 
-    // 2. Service Workerの登録
-    log("sw.js を登録中...", "text");
-    const reg = await navigator.serviceWorker.register("./sw.js").catch(err => {
-      throw new Error("sw.js の登録に失敗しました。ファイルパスやHTTPS環境を確認してください。詳細: " + err.message);
-    });
-    
-    log("Service Worker が準備完了になるのを待機中...", "text");
+
+    // ==========================================================
+    // 2. Service Worker登録
+    // ==========================================================
+
+    log(
+      "sw.jsを登録中...",
+      "text"
+    );
+
+    const reg =
+      await navigator.serviceWorker.register(
+        "./sw.js",
+        {
+          updateViaCache: "none"
+        }
+      );
+
+
+    log(
+      "Service Worker登録成功",
+      "success"
+    );
+
+
+    // 強制更新確認
+
+    await reg.update();
+
+    log(
+      "Service Workerの更新確認完了",
+      "success"
+    );
+
+
+    // ==========================================================
+    // Service Worker準備待ち
+    // ==========================================================
+
+    log(
+      "Service Workerがactiveになるのを待機...",
+      "text"
+    );
+
     await navigator.serviceWorker.ready;
-    log("Service Worker がアクティブになりました。", "success");
 
-    // 3. プッシュサーバーへのサブスクライブ
-    log("VAPIDキーを変換中...", "text");
-    const applicationServerKey = base64ToUint8Array(VAPID_PUBLIC_KEY);
+    log(
+      "Service Workerがactiveになりました。",
+      "success"
+    );
 
-    log("プッシュサーバー(FCM等)に接続してエンドポイントを生成中...", "text");
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: applicationServerKey
-    }).catch(err => {
-      throw new Error("プッシュサーバーへの登録(subscribe)に失敗しました。VAPID鍵のペアがズレているか、ブラウザの通信エラーです。詳細: " + err.message);
-    });
 
-    log("🎉 プッシュサーバーへの登録に成功しました！", "success");
-    
-    // 💡 思考: 取得できた購読データの中身を綺麗に整形して画面に出す
-    log("【取得した購読情報 (Subscription)】\n" + JSON.stringify(sub, null, 2), "info");
+    // ==========================================================
+    // 3. ここが重要
+    //
+    // ページ側からlocalhostへ接続して
+    // Local Network Access権限を取得する。
+    //
+    // Service Worker側ではこの権限取得を行えない。
+    // ==========================================================
 
-    // 4. GASへデータを送信
-    log("GAS Webアプリケーションへのデータ送信を開始します...", "text");
-    log(`送信先: ${GAS_WEBAPP_URL}`, "text");
+    log(
+      "Local Network Access権限を確認します...",
+      "info"
+    );
 
-    await fetch(GAS_WEBAPP_URL, {
-      method: "POST",
-      mode: "no-cors", // GASのリダイレクト対策
-      body: JSON.stringify(sub)
-    }).then(() => {
-      log("🚀 GASへのデータ送信コマンドが完了しました！(mode:no-corsのため成否の成否判定はGAS側依存)", "success");
-      log("GAS側の『実行ログ』または『スクリプトプロパティ(SUB)』にデータが書き込まれたか確認してください。", "info");
-    }).catch(err => {
-      throw new Error("GASへのネットワーク通信自体に失敗しました。URLが正しいか、インターネット接続を確認してください。詳細: " + err.message);
-    });
+    await checkLoopbackPermission();
+
+
+    log(
+      "Python localhostへ接続して権限取得を試みます...",
+      "text"
+    );
+
+    const pythonOK =
+      await testPythonConnection();
+
+    if (!pythonOK) {
+
+      log(
+        "Python接続に失敗しました。",
+        "error"
+      );
+
+      log(
+        "Pythonを先に起動してください:",
+        "info"
+      );
+
+      log(
+        "python3 push_server.py",
+        "info"
+      );
+
+      return;
+    }
+
+
+    await checkLoopbackPermission();
+
+
+    // ==========================================================
+    // 4. VAPID公開鍵
+    // ==========================================================
+
+    log(
+      "VAPID公開鍵を変換中...",
+      "text"
+    );
+
+    const applicationServerKey =
+      base64ToUint8Array(
+        VAPID_PUBLIC_KEY
+      );
+
+
+    // ==========================================================
+    // 5. Push Subscription
+    // ==========================================================
+
+    log(
+      "既存Subscriptionを確認中...",
+      "text"
+    );
+
+    let sub =
+      await reg.pushManager.getSubscription();
+
+
+    if (sub) {
+
+      log(
+        "既存のSubscriptionを使用します。",
+        "success"
+      );
+
+    } else {
+
+      log(
+        "新しいSubscriptionを作成します...",
+        "text"
+      );
+
+      sub =
+        await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey:
+            applicationServerKey
+        });
+
+      log(
+        "新しいSubscriptionを作成しました。",
+        "success"
+      );
+
+    }
+
+
+    // ==========================================================
+    // Subscription表示
+    // ==========================================================
+
+    log(
+      "【取得したSubscription】\n" +
+      JSON.stringify(
+        sub.toJSON(),
+        null,
+        2
+      ),
+      "info"
+    );
+
+
+    // ==========================================================
+    // 6. GASへ送信
+    // ==========================================================
+
+    log(
+      "GASへのSubscription送信を開始...",
+      "text"
+    );
+
+    log(
+      `送信先: ${GAS_WEBAPP_URL}`,
+      "text"
+    );
+
+
+    await fetch(
+      GAS_WEBAPP_URL,
+      {
+        method: "POST",
+        mode: "no-cors",
+        body: JSON.stringify(
+          sub.toJSON()
+        )
+      }
+    );
+
+
+    log(
+      "GASへの送信処理が完了しました。",
+      "success"
+    );
+
+    log(
+      "GAS側でSubscriptionが保存されていることを確認してください。",
+      "info"
+    );
+
+
+    // ==========================================================
+    // 完了
+    // ==========================================================
+
+    log(
+      "================================",
+      "info"
+    );
+
+    log(
+      "Web Push登録完了",
+      "success"
+    );
+
+    log(
+      "Push受信時はService WorkerからPythonへ転送されます。",
+      "success"
+    );
+
+    log(
+      "================================",
+      "info"
+    );
 
   } catch (error) {
-    // 💡 思考: 途中でエラーが起きたら、どのフェーズであってもここに飛んで赤文字で直撃させる
-    log(`❌ エラー発生: ${error.message}`, "error");
-    console.error(error);
+
+    log(
+      "❌ エラー発生: " +
+      error.message,
+      "error"
+    );
+
+    console.error(
+      error
+    );
+
   }
+
 };
+
+
+// ================================================================
+// ページ読み込み時に権限状態確認
+// ================================================================
+
+window.addEventListener(
+  "load",
+  async () => {
+
+    log(
+      "ページ読み込み完了",
+      "info"
+    );
+
+    await checkLoopbackPermission();
+
+  }
+);
+
 </script>
 
 </body>
